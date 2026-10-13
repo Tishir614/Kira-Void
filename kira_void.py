@@ -5,6 +5,7 @@
                                                   # smarter, uncensored, uncensored-smart)
   python kira_void.py         # terminal chat
   python kira_void.py web     # web UI on http://127.0.0.1:8080
+  python kira_void.py web --lan   # also serve the Android app over Wi-Fi
   python kira_void.py image "prompt"            # text -> image.png
   python kira_void.py edit in.png "prompt"      # edit an image by instruction
 """
@@ -15,6 +16,7 @@ OLLAMA = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
 MODEL = os.environ.get("KIRA_MODEL", "kira-void")
 HERE = os.path.dirname(os.path.abspath(__file__))
 STORE = os.path.expanduser("~/.kira-void/history.json")
+TOKEN = os.environ.get("KIRA_TOKEN", "")  # optional password for the phone app / LAN access
 
 
 def chat_stream(messages):
@@ -123,12 +125,26 @@ def cli():
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
 
+    def authorized(self):
+        if TOKEN and self.headers.get("X-Kira-Token") != TOKEN:
+            self.send_response(401); self.end_headers(); self.wfile.write(b"bad token")
+            return False
+        return True
+
     def do_GET(self):
+        if self.path == "/ping":
+            if not self.authorized():
+                return
+            body = json.dumps({"name": "Kira-Void", "model": MODEL}).encode()
+            self.send_response(200); self.send_header("Content-Type", "application/json")
+            self.end_headers(); self.wfile.write(body); return
         body = open(os.path.join(HERE, "web", "index.html"), "rb").read()
         self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8")
         self.end_headers(); self.wfile.write(body)
 
     def do_POST(self):
+        if not self.authorized():
+            return
         data = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         if self.path in ("/image", "/edit"):
             return self.image(data)
@@ -157,9 +173,21 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
-def web():
+def web(lan=False):
+    host = "0.0.0.0" if lan else "127.0.0.1"
+    if lan:
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(("8.8.8.8", 80)); ip = s.getsockname()[0]
+        except OSError:
+            ip = "<this-pc-ip>"
+        s.close()
+        print(f"Kira-Void for phone: enter http://{ip}:8080 in the app settings")
+        if not TOKEN:
+            print("Tip: set KIRA_TOKEN=yourpassword so others on the network can't use it")
     print("Kira-Void web UI: http://127.0.0.1:8080")
-    ThreadingHTTPServer(("127.0.0.1", 8080), Handler).serve_forever()
+    ThreadingHTTPServer((host, 8080), Handler).serve_forever()
 
 
 def cli_image(argv):
@@ -194,4 +222,4 @@ if __name__ == "__main__":
         if a[:1] == ["setup"]:
             setup(a[1] if len(a) > 1 else None)
         else:
-            {"web": web}.get(a[0] if a else "", cli)()
+            {"web": lambda: web("--lan" in a)}.get(a[0] if a else "", cli)()

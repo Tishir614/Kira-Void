@@ -46,3 +46,12 @@ Any other Ollama tag also works. In the terminal chat, `/model <name>` switches 
 
 ## Terminal chat commands
 `/system <prompt>` set your own persona/system prompt, `/web <url>` read a web page into context, `/file <path>` read a local text file, `/img <prompt>` generate an image, `/model <name>` switch model, `/reset` clear memory.
+
+## Android app (built on Codemagic)
+The phone app (`android_app/`, Flutter) is a client: the AI still runs on your PC, the phone connects over Wi-Fi. It has chat, image create/edit (pick a photo from the gallery), saving/sharing results and settings.
+
+1. On the PC: `KIRA_TOKEN=yourpassword python kira_void.py web --lan` (on Windows: `set KIRA_TOKEN=yourpassword` first). It prints the address to use, e.g. `http://192.168.1.5:8080`.
+2. Build the APK: on https://codemagic.io/apps add this repository, pick the **Kira-Void Android** workflow from `codemagic.yaml`, start the build and download `app-release.apk` from the build artifacts.
+3. Install the APK on the phone (allow "install unknown apps"), open **Settings** in the app, enter the address and password, tap **Save and check**.
+
+Phone and PC must be on the same network. The APK is signed with a debug key, so it can be installed directly but not published to Google Play.
