@@ -90,8 +90,8 @@ class PhoneImages {
 
 final _minor = RegExp(
   r'\b(child|children|kid|kids|minor|underage|under-age|loli|lolita|shota|toddler|'
-  r'infant|preteen|pre-teen|teen|teenage|teenager|schoolgirl|schoolboy|young[- ]?looking)\b|'
-  r'(ребен|ребён|детск|дети|малолет|несовершеннолет|школьниц|школьник|подрост|лоли)',
+  r'infant|preteen|pre-teen|teen|teenage|teenager|schoolgirl|schoolboy|young[- ]?looking|cubs?|babyfur)\b|'
+  r'(детёныш|детеныш|ребен|ребён|детск|дети|малолет|несовершеннолет|школьниц|школьник|подрост|лоли)',
   caseSensitive: false,
   unicode: true,
 );

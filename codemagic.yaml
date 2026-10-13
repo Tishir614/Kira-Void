@@ -40,8 +40,35 @@ workflows:
       - name: Install converter dependencies
         script: pip3 install --index-url https://download.pytorch.org/whl/cpu torch && pip3 install safetensors numpy requests
       - name: Download model
-        script: curl -fL --retry 5 -o model.safetensors "$SD15_MODEL_URL"
+        script: &download |
+          AUTH=()
+          if [ -n "$CIVITAI_TOKEN" ]; then AUTH=(-H "Authorization: Bearer $CIVITAI_TOKEN"); fi
+          curl -fL --retry 5 "${AUTH[@]}" -o model.safetensors "$SD15_MODEL_URL"
       - name: Convert for phone
-        script: python3 tools/convert_sd_for_phone.py model.safetensors kira-void-image-model.zip && rm model.safetensors
+        script: &convert python3 tools/convert_sd_for_phone.py model.safetensors kira-void-image-model.zip && rm model.safetensors
+    artifacts:
+      - kira-void-image-model.zip
+
+  # Same, for any SD 1.5 checkpoint you choose (furry, anime, photoreal, NSFW...).
+  # In Codemagic: App settings > Environment variables, group "kira_model", add
+  #   SD15_MODEL_URL  = direct download link of an SD 1.5 .safetensors
+  #                     (Civitai: https://civitai.com/api/download/models/<version id>)
+  #   CIVITAI_TOKEN   = your Civitai API key (needed for NSFW models on Civitai)
+  kira-void-phone-image-model-custom:
+    name: Kira-Void phone image model (custom / furry)
+    max_build_duration: 60
+    instance_type: linux_x2
+    environment:
+      groups:
+        - kira_model
+    scripts:
+      - name: Install converter dependencies
+        script: pip3 install --index-url https://download.pytorch.org/whl/cpu torch && pip3 install safetensors numpy requests
+      - name: Check settings
+        script: '[ -n "$SD15_MODEL_URL" ] || { echo "Set SD15_MODEL_URL in the kira_model environment group"; exit 1; }'
+      - name: Download model
+        script: *download
+      - name: Convert for phone
+        script: *convert
     artifacts:
       - kira-void-image-model.zip

@@ -14,8 +14,8 @@ OUT = os.path.expanduser("~/.kira-void/images")
 
 _MINOR = re.compile(
     r"\b(child|children|kid|kids|minor|underage|under-age|loli|lolita|shota|toddler|"
-    r"infant|preteen|pre-teen|teen(?:age|ager)?|schoolgirl|schoolboy|young[- ]?looking|"
-    r"ребен\w*|детск\w*|дети|малолет\w*|несовершеннолет\w*|школьниц\w*|школьник\w*|подрост\w*|лоли)\b",
+    r"infant|preteen|pre-teen|teen(?:age|ager)?|schoolgirl|schoolboy|young[- ]?looking|cubs?|babyfur|"
+    r"детёныш\w*|детеныш\w*|ребен\w*|детск\w*|дети|малолет\w*|несовершеннолет\w*|школьниц\w*|школьник\w*|подрост\w*|лоли)\b",
     re.I,
 )
 # Numeric ages: "12-year-old", "12 yo", "12 y/o", "aged 12", "age: 12", "12 лет", "12-летняя"
@@ -49,7 +49,11 @@ def _pipe(kind):
     from diffusers import AutoPipelineForText2Image, StableDiffusionInstructPix2PixPipeline
     dev, dt = _device()
     if kind == "gen":
-        p = AutoPipelineForText2Image.from_pretrained(GEN_MODEL, torch_dtype=dt)
+        if GEN_MODEL.endswith((".safetensors", ".ckpt")):  # single-file checkpoint, e.g. from Civitai
+            from diffusers import StableDiffusionXLPipeline
+            p = StableDiffusionXLPipeline.from_single_file(GEN_MODEL, torch_dtype=dt)
+        else:
+            p = AutoPipelineForText2Image.from_pretrained(GEN_MODEL, torch_dtype=dt)
         for i, lora in enumerate(LORAS):
             p.load_lora_weights(lora, adapter_name=f"lora{i}")
         if LORAS:

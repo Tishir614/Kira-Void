@@ -430,6 +430,15 @@ class _ImagePageState extends State<ImagePage> {
   bool busy = false;
   String? error;
   double steps = 20;
+  String style = 'none';
+
+  static const styles = {
+    'none': ('Без стиля', ''),
+    'photo': ('Фото', 'photo, realistic, 35mm, natural light, detailed skin'),
+    'anime': ('Аниме', 'anime style, vibrant colors, clean lineart'),
+    'furry': ('Фурри', 'anthro, furry, adult, detailed fur, digital art'),
+    'art': ('Арт', 'digital painting, concept art, dramatic lighting'),
+  };
 
   Future<void> pick() async {
     final f = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 1536);
@@ -446,13 +455,15 @@ class _ImagePageState extends State<ImagePage> {
       busy = true;
       error = null;
     });
+    final extra = styles[style]!.$2;
+    final text = extra.isEmpty ? prompt.text.trim() : '${prompt.text.trim()}, $extra';
     try {
       final Uint8List png;
       if (Api.onPhone) {
-        png = await PhoneImages.generate(prompt.text.trim(), photo: source, steps: steps.round());
+        png = await PhoneImages.generate(text, photo: source, steps: steps.round());
       } else {
         if (Api.server.isEmpty) throw 'Укажи адрес компьютера в настройках';
-        png = await Api.image(prompt.text.trim(), source: source);
+        png = await Api.image(text, source: source);
       }
       setState(() => result = png);
     } catch (e) {
@@ -552,6 +563,16 @@ class _ImagePageState extends State<ImagePage> {
                   onPressed: () => setState(() => source = null), icon: const Icon(Icons.close)),
           ]),
           const SizedBox(height: 14),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            for (final e in styles.entries)
+              ChoiceChip(
+                label: Text(e.value.$1),
+                selected: style == e.key,
+                selectedColor: violet.withValues(alpha: 0.35),
+                onSelected: (_) => setState(() => style = e.key),
+              ),
+          ]),
+          const SizedBox(height: 12),
           TextField(
             controller: prompt,
             minLines: 2,

@@ -58,6 +58,10 @@ The phone app (`android_app/`, Flutter) has two modes, switched in **Settings**:
 1. On Codemagic run the **Kira-Void phone image model** workflow. It downloads SD 1.5 and produces `kira-void-image-model.zip` (~2 GB) as an artifact. To use a different SD 1.5-based model, change `SD15_MODEL_URL` (direct link to a `.safetensors`). SDXL/SD2/Flux models do not work on the phone.
 2. Download the zip on the phone and in the app's **Images** tab tap **Choose file** (or paste a direct link to the zip).
 
+**Custom / furry / NSFW models on the phone:** the base SD 1.5 is weak at stylised and furry art. Pick any **SD 1.5**-based checkpoint (e.g. on Civitai filter by base model "SD 1.5" and the style you want), then in Codemagic open *App settings → Environment variables*, create group `kira_model` with `SD15_MODEL_URL` (direct link, for Civitai `https://civitai.com/api/download/models/<version id>`) and `CIVITAI_TOKEN` (your Civitai API key; required for NSFW models), and run **Kira-Void phone image model (custom / furry)**. The phone engine has no content filter; only the minors block applies. Style chips in the app (Photo, Anime, Furry, Art) add matching tags to the prompt.
+
+On the PC, `KIRA_IMAGE_MODEL` also accepts a path to a single-file SDXL `.safetensors` (e.g. a furry or photoreal SDXL checkpoint downloaded from Civitai).
+
 Alternatively convert on a PC: `pip install torch safetensors numpy requests` then `python tools/convert_sd_for_phone.py model.safetensors kira-void-image-model.zip`.
 
 With a photo selected, phone mode keeps the photo's outlines (edge plugin) and repaints it by the prompt; true prompt-based editing (InstructPix2Pix) and SDXL quality are PC-only.
