@@ -23,6 +23,7 @@ _AGE = re.compile(
     r"(?:\b(\d{1,2})\s*[- ]?\s*(?:years?[- ]?old|yrs?[- ]?old|y/?o\b|yo\b|лет|летн\w*|года\b|год\b)"
     r"|\b(?:aged?|возраст\w*)\s*[:=]?\s*(\d{1,2})\b)", re.I)
 _pipes = {}
+IS_SD15 = False  # set when KIRA_IMAGE_MODEL is an SD 1.5 checkpoint: 512px, lower CFG, no SDXL refiner
 
 QUALITY = ("masterpiece, best quality, ultra detailed, sharp focus, realistic skin texture, "
            "natural lighting, professional photo, 8k, anatomically correct, perfect hands, five fingers")
@@ -50,8 +51,13 @@ def _pipe(kind):
     dev, dt = _device()
     if kind == "gen":
         if GEN_MODEL.endswith((".safetensors", ".ckpt")):  # single-file checkpoint, e.g. from Civitai
-            from diffusers import StableDiffusionXLPipeline
-            p = StableDiffusionXLPipeline.from_single_file(GEN_MODEL, torch_dtype=dt)
+            from diffusers import StableDiffusionPipeline, StableDiffusionXLPipeline
+            global IS_SD15
+            try:
+                p = StableDiffusionXLPipeline.from_single_file(GEN_MODEL, torch_dtype=dt)
+            except Exception:  # SD 1.5 checkpoints such as OrbitMix
+                p = StableDiffusionPipeline.from_single_file(GEN_MODEL, torch_dtype=dt, safety_checker=None)
+                IS_SD15 = True
         else:
             p = AutoPipelineForText2Image.from_pretrained(GEN_MODEL, torch_dtype=dt)
         for i, lora in enumerate(LORAS):
@@ -106,8 +112,12 @@ def generate(prompt, negative="", steps=40, seed=None, width=1024, height=1024, 
     g = torch.Generator().manual_seed(seed) if seed is not None else None
     kw = dict(prompt=f"{prompt}, {QUALITY}", negative_prompt=f"{negative}, {NEGATIVE}".strip(", "),
               num_inference_steps=steps, guidance_scale=guidance, generator=g)
+    _pipe("gen")
+    if IS_SD15:
+        width, height = (512, 512) if width == height else ((512, 768) if height > width else (768, 512))
+        kw["guidance_scale"] = min(guidance, 5.0)  # OrbitMix-style models want CFG 3-6
     kw.update(width=width, height=height)
-    use_ref = REFINER_MODEL.lower() != "none"
+    use_ref = REFINER_MODEL.lower() != "none" and not IS_SD15
     if use_ref:
         latents = _pipe("gen")(**kw, denoising_end=0.8, output_type="latent").images
         img = _pipe("refiner")(prompt=kw["prompt"], negative_prompt=kw["negative_prompt"],

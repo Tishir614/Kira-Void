@@ -72,3 +72,25 @@ workflows:
         script: *convert
     artifacts:
       - kira-void-image-model.zip
+
+  # OrbitMix v2.1 (furry, SD 1.5, civitai.com/models/172268) converted for the phone.
+  # Civitai needs your API key for this model: add CIVITAI_TOKEN to the "kira_model"
+  # environment group (App settings > Environment variables).
+  kira-void-phone-orbitmix:
+    name: Kira-Void phone image model (OrbitMix v2.1)
+    max_build_duration: 60
+    instance_type: linux_x2
+    environment:
+      groups:
+        - kira_model
+    scripts:
+      - name: Install converter dependencies
+        script: pip3 install --index-url https://download.pytorch.org/whl/cpu torch && pip3 install safetensors numpy requests
+      - name: Find OrbitMix v2.1
+        script: echo "SD15_MODEL_URL=$(python3 tools/civitai_url.py 172268 v2.1)" >> $CM_ENV
+      - name: Download model
+        script: *download
+      - name: Convert for phone
+        script: *convert
+    artifacts:
+      - kira-void-image-model.zip

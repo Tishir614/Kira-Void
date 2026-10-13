@@ -60,7 +60,9 @@ The phone app (`android_app/`, Flutter) has two modes, switched in **Settings**:
 
 **Custom / furry / NSFW models on the phone:** the base SD 1.5 is weak at stylised and furry art. Pick any **SD 1.5**-based checkpoint (e.g. on Civitai filter by base model "SD 1.5" and the style you want), then in Codemagic open *App settings → Environment variables*, create group `kira_model` with `SD15_MODEL_URL` (direct link, for Civitai `https://civitai.com/api/download/models/<version id>`) and `CIVITAI_TOKEN` (your Civitai API key; required for NSFW models), and run **Kira-Void phone image model (custom / furry)**. The phone engine has no content filter; only the minors block applies. Style chips in the app (Photo, Anime, Furry, Art) add matching tags to the prompt.
 
-On the PC, `KIRA_IMAGE_MODEL` also accepts a path to a single-file SDXL `.safetensors` (e.g. a furry or photoreal SDXL checkpoint downloaded from Civitai).
+**OrbitMix v2.1** (furry, SD 1.5) has its own ready workflow: add `CIVITAI_TOKEN` to the `kira_model` group and run **Kira-Void phone image model (OrbitMix v2.1)**; it finds v2.1 through the Civitai API, converts it and gives you the zip to import. Tip: the author recommends tag-style prompts and low CFG (3-6).
+
+On the PC, `KIRA_IMAGE_MODEL` also accepts a path to a single-file `.safetensors` checkpoint, SDXL or SD 1.5 (e.g. `KIRA_IMAGE_MODEL=OrbitMixV2.1.safetensors`); SD 1.5 models automatically use 512px, CFG 5 and no refiner.
 
 Alternatively convert on a PC: `pip install torch safetensors numpy requests` then `python tools/convert_sd_for_phone.py model.safetensors kira-void-image-model.zip`.
 
