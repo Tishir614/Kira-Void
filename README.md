@@ -43,3 +43,6 @@ In the web UI type `/img your prompt`, or attach a picture and type the change y
 | uncensored-smart | huihui_ai/qwen3-abliterated:14b | |
 
 Any other Ollama tag also works. In the terminal chat, `/model <name>` switches the active model on the fly (a second chat model). The tags above are community models and may be renamed; check ollama.com if a pull fails.
+
+## Terminal chat commands
+`/system <prompt>` set your own persona/system prompt, `/web <url>` read a web page into context, `/file <path>` read a local text file, `/img <prompt>` generate an image, `/model <name>` switch model, `/reset` clear memory.

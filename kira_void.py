@@ -65,10 +65,18 @@ def setup(preset=None):
         os.remove(path)
 
 
+def fetch_text(url, limit=20000):
+    import re
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 Kira-Void"})
+    html = urllib.request.urlopen(req, timeout=30).read().decode("utf-8", "replace")
+    html = re.sub(r"(?is)<(script|style).*?</\1>", " ", html)
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)).strip()[:limit]
+
+
 def cli():
     global MODEL
     msgs = load()
-    print(f"Kira-Void ({MODEL}). /reset clears memory, /model <name> switches model, /exit quits.")
+    print(f"Kira-Void ({MODEL}). /reset, /model <name>, /system <prompt>, /web <url>, /file <path>, /img <prompt>, /exit.")
     while True:
         try:
             q = input("\n> ").strip()
@@ -79,6 +87,26 @@ def cli():
         if q.startswith("/model"):
             MODEL = q.split(maxsplit=1)[1] if " " in q else MODEL
             print(f"model: {MODEL}"); continue
+        if q.startswith("/system "):   # replace the persona / system prompt for this chat
+            msgs = [m for m in msgs if m["role"] != "system"]
+            msgs.insert(0, {"role": "system", "content": q[8:]}); save(msgs)
+            print("system prompt set"); continue
+        if q.startswith(("/web ", "/file ")):   # load a web page or local text file as context
+            cmd, arg = q.split(maxsplit=1)
+            try:
+                text = fetch_text(arg) if cmd == "/web" else open(os.path.expanduser(arg), errors="replace").read()[:40000]
+            except Exception as e:
+                print(f"[error: {e}]"); continue
+            msgs.append({"role": "user", "content": f"Reference material ({arg}):\n{text}"})
+            msgs.append({"role": "assistant", "content": "Loaded. Ask me about it."}); save(msgs)
+            print(f"loaded {len(text)} chars"); continue
+        if q.startswith("/img "):
+            import images
+            try:
+                open("image.png", "wb").write(images.generate(q[5:])); print("saved image.png")
+            except Exception as e:
+                print(f"[error: {e}]")
+            continue
         if q == "/reset":
             msgs = []; save(msgs); print("memory cleared"); continue
         if not q:
