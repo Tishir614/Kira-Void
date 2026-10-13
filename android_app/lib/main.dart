@@ -9,14 +9,17 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'local_ai.dart';
+
 const violet = Color(0xFF9D6BFF);
 const violetDeep = Color(0xFF5B2EDB);
 const bgTop = Color(0xFF0B0816);
 const bgBottom = Color(0xFF1C0F3A);
 const surface = Color(0xFF17122A);
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await LocalAI.init();
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     systemNavigationBarColor: bgTop,
@@ -28,11 +31,25 @@ void main() {
 class Api {
   static String server = '';
   static String token = '';
+  static String hfToken = '';
+  static bool onPhone = true; // true: Qwen runs on the phone, false: on the PC server
 
   static Future<void> load() async {
     final p = await SharedPreferences.getInstance();
     server = p.getString('server') ?? '';
     token = p.getString('token') ?? '';
+    hfToken = p.getString('hfToken') ?? '';
+    onPhone = p.getBool('onPhone') ?? true;
+  }
+
+  static Future<void> setMode(bool phone) async {
+    onPhone = phone;
+    (await SharedPreferences.getInstance()).setBool('onPhone', phone);
+  }
+
+  static Future<void> setHfToken(String t) async {
+    hfToken = t.trim();
+    (await SharedPreferences.getInstance()).setString('hfToken', hfToken);
   }
 
   static Future<void> save(String s, String t) async {
@@ -147,7 +164,7 @@ class _HomeState extends State<Home> {
     Api.load().then((_) {
       setState(() {
         ready = true;
-        if (Api.server.isEmpty) tab = 2;
+        if (!Api.onPhone && Api.server.isEmpty) tab = 2;
       });
     });
   }
@@ -256,7 +273,8 @@ class _ChatPageState extends State<ChatPage> {
     setState(() => msgs.add(answer));
     toBottom();
     try {
-      await for (final t in Api.chat(history)) {
+      final stream = Api.onPhone ? LocalAI.ask(text) : Api.chat(history);
+      await for (final t in stream) {
         setState(() => answer['content'] = answer['content']! + t);
         toBottom();
       }
@@ -274,11 +292,16 @@ class _ChatPageState extends State<ChatPage> {
           action: IconButton(
             tooltip: 'Новый чат',
             icon: const Icon(Icons.add_comment_outlined),
-            onPressed: () {
+            onPressed: () async {
+              if (busy) await LocalAI.stop();
+              if (LocalAI.ready) await LocalAI.newChat();
               setState(() => msgs = []);
               persist();
             },
           )),
+      if (Api.onPhone && !LocalAI.ready)
+        Expanded(child: ModelSetup(onReady: () => setState(() {})))
+      else ...[
       Expanded(
         child: msgs.isEmpty
             ? const Center(
@@ -304,9 +327,12 @@ class _ChatPageState extends State<ChatPage> {
             ),
           ),
           const SizedBox(width: 8),
-          GradientButton(icon: busy ? Icons.hourglass_top : Icons.arrow_upward, onTap: send),
+          GradientButton(
+              icon: busy ? Icons.stop_rounded : Icons.arrow_upward,
+              onTap: busy && Api.onPhone ? LocalAI.stop : send),
         ]),
       ),
+      ],
     ]);
   }
 }
@@ -417,6 +443,7 @@ class _ImagePageState extends State<ImagePage> {
       error = null;
     });
     try {
+      if (Api.server.isEmpty) throw 'Укажи адрес компьютера в настройках';
       final png = await Api.image(prompt.text.trim(), source: source);
       setState(() => result = png);
     } catch (e) {
@@ -436,6 +463,11 @@ class _ImagePageState extends State<ImagePage> {
   Widget build(BuildContext context) {
     return ListView(padding: const EdgeInsets.only(bottom: 24), children: [
       const Header('Создать'),
+      if (Api.onPhone)
+        const InfoCard(
+            'Картинки рисует компьютер: SDXL слишком тяжёлая для телефона. '
+            'Чат работает офлайн на телефоне, а для изображений запусти на ПК '
+            '«python kira_void.py web --lan» и укажи его адрес в настройках.'),
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -539,6 +571,7 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   late final server = TextEditingController(text: Api.server);
   late final token = TextEditingController(text: Api.token);
+  late final hf = TextEditingController(text: Api.hfToken);
   String status = '';
   bool ok = false;
 
@@ -567,6 +600,35 @@ class _SettingsPageState extends State<SettingsPage> {
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const Text('Где работает чат', style: TextStyle(color: Colors.white70)),
+          const SizedBox(height: 8),
+          SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment(value: true, icon: Icon(Icons.smartphone), label: Text('На телефоне')),
+              ButtonSegment(value: false, icon: Icon(Icons.computer), label: Text('На компьютере')),
+            ],
+            selected: {Api.onPhone},
+            onSelectionChanged: (v) async {
+              await Api.setMode(v.first);
+              setState(() {});
+            },
+          ),
+          const SizedBox(height: 18),
+          if (Api.onPhone) ...[
+            const PhoneModelsCard(),
+            const SizedBox(height: 12),
+            TextField(
+              controller: hf,
+              obscureText: true,
+              onChanged: Api.setHfToken,
+              decoration: const InputDecoration(
+                  labelText: 'HuggingFace токен (если загрузка просит)',
+                  prefixIcon: Icon(Icons.key_outlined)),
+            ),
+            const SizedBox(height: 28),
+            const Text('Компьютер (для картинок)', style: TextStyle(color: Colors.white70)),
+            const SizedBox(height: 8),
+          ],
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -609,5 +671,199 @@ class _SettingsPageState extends State<SettingsPage> {
         ]),
       ),
     ]);
+  }
+}
+
+class InfoCard extends StatelessWidget {
+  const InfoCard(this.text, {super.key});
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        color: violet.withValues(alpha: 0.10),
+        border: Border.all(color: violet.withValues(alpha: 0.3)),
+      ),
+      child: Text(text, style: const TextStyle(color: Colors.white70, height: 1.4)),
+    );
+  }
+}
+
+// ---------------- On-phone model ----------------
+
+/// First-run screen: pick a Qwen size, download it once, then chat offline.
+class ModelSetup extends StatefulWidget {
+  const ModelSetup({super.key, required this.onReady});
+  final VoidCallback onReady;
+  @override
+  State<ModelSetup> createState() => _ModelSetupState();
+}
+
+class _ModelSetupState extends State<ModelSetup> {
+  PhoneModel choice = phoneModels.first;
+  int? progress;
+  String? error;
+  bool loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Auto-load the model used last time (no download if it is already on the phone).
+    LocalAI.savedModelId().then((id) async {
+      final m = phoneModels.where((m) => m.id == id).firstOrNull;
+      if (m != null && await LocalAI.isDownloaded(m)) {
+        setState(() => choice = m);
+        start();
+      }
+    });
+  }
+
+  Future<void> start() async {
+    if (loading) return;
+    setState(() {
+      loading = true;
+      error = null;
+      progress = null;
+    });
+    try {
+      await LocalAI.load(choice,
+          hfToken: Api.hfToken, onProgress: (p) => mounted ? setState(() => progress = p) : null);
+      widget.onReady();
+    } catch (e) {
+      if (mounted) setState(() => error = '$e');
+    }
+    if (mounted) setState(() => loading = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 16), children: [
+      const Text('Нейросеть прямо на телефоне',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+      const SizedBox(height: 6),
+      const Text(
+          'Модель скачивается один раз, дальше всё работает без интернета и без серверов. Лучше качать по Wi-Fi.',
+          style: TextStyle(color: Colors.white60, height: 1.4)),
+      const SizedBox(height: 16),
+      for (final m in phoneModels)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(18),
+            onTap: loading ? null : () => setState(() => choice = m),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                color: choice == m ? violet.withValues(alpha: 0.18) : Colors.white.withValues(alpha: 0.05),
+                border: Border.all(color: choice == m ? violet : Colors.white12, width: choice == m ? 2 : 1),
+              ),
+              child: Row(children: [
+                Icon(choice == m ? Icons.radio_button_checked : Icons.radio_button_off,
+                    color: choice == m ? violet : Colors.white38),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(m.title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+                    const SizedBox(height: 2),
+                    Text(m.note, style: const TextStyle(color: Colors.white60, fontSize: 13)),
+                  ]),
+                ),
+                Text(m.size, style: const TextStyle(color: Colors.white70)),
+              ]),
+            ),
+          ),
+        ),
+      const SizedBox(height: 8),
+      if (loading) ...[
+        ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: LinearProgressIndicator(
+            minHeight: 10,
+            value: progress == null || progress! >= 100 ? null : progress! / 100,
+            color: violet,
+            backgroundColor: Colors.white10,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(progress == null || progress! >= 100 ? 'Загружаю модель в память…' : 'Скачивание: $progress%',
+            textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70)),
+      ] else
+        GradientButton(icon: Icons.download_rounded, label: 'Скачать и запустить', onTap: start),
+      if (error != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: Text('Ошибка: $error', style: const TextStyle(color: Colors.redAccent)),
+        ),
+    ]);
+  }
+}
+
+/// Settings card: which models are on the phone, with delete buttons to free space.
+class PhoneModelsCard extends StatefulWidget {
+  const PhoneModelsCard({super.key});
+  @override
+  State<PhoneModelsCard> createState() => _PhoneModelsCardState();
+}
+
+class _PhoneModelsCardState extends State<PhoneModelsCard> {
+  Map<String, bool> downloaded = {};
+
+  @override
+  void initState() {
+    super.initState();
+    refresh();
+  }
+
+  Future<void> refresh() async {
+    final d = <String, bool>{};
+    for (final m in phoneModels) {
+      try {
+        d[m.id] = await LocalAI.isDownloaded(m);
+      } catch (_) {
+        d[m.id] = false;
+      }
+    }
+    if (mounted) setState(() => downloaded = d);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        color: Colors.white.withValues(alpha: 0.05),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(LocalAI.active == null ? 'Модель не запущена' : 'Работает: ${LocalAI.active!.title}',
+            style: const TextStyle(fontWeight: FontWeight.w600)),
+        const SizedBox(height: 6),
+        for (final m in phoneModels)
+          if (downloaded[m.id] == true)
+            Row(children: [
+              const Icon(Icons.memory, size: 18, color: violet),
+              const SizedBox(width: 8),
+              Expanded(child: Text('${m.title} · ${m.size}')),
+              IconButton(
+                tooltip: 'Удалить с телефона',
+                icon: const Icon(Icons.delete_outline),
+                onPressed: () async {
+                  await LocalAI.delete(m);
+                  refresh();
+                },
+              ),
+            ]),
+        if (!downloaded.containsValue(true))
+          const Text('Скачанных моделей нет. Открой вкладку «Чат», чтобы скачать.',
+              style: TextStyle(color: Colors.white60)),
+      ]),
+    );
   }
 }

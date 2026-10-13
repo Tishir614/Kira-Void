@@ -48,10 +48,17 @@ Any other Ollama tag also works. In the terminal chat, `/model <name>` switches 
 `/system <prompt>` set your own persona/system prompt, `/web <url>` read a web page into context, `/file <path>` read a local text file, `/img <prompt>` generate an image, `/model <name>` switch model, `/reset` clear memory.
 
 ## Android app (built on Codemagic)
-The phone app (`android_app/`, Flutter) is a client: the AI still runs on your PC, the phone connects over Wi-Fi. It has chat, image create/edit (pick a photo from the gallery), saving/sharing results and settings.
+The phone app (`android_app/`, Flutter) has two modes, switched in **Settings**:
+
+- **On the phone (default):** Qwen runs fully offline on the phone (MediaPipe/LiteRT via `flutter_gemma`). On first launch pick a model and it downloads once from HuggingFace: Qwen 2.5 1.5B (1.6 GB, 6+ GB RAM), Qwen 3 0.6B (0.6 GB) or Qwen 2.5 0.5B (0.5 GB, weak phones). GPU is used when available, CPU otherwise. Downloaded models can be deleted in Settings.
+- **On the PC:** chat goes to your PC's Kira-Void server (bigger models, better answers).
+
+Image creation/editing always runs on the PC: SDXL is too heavy for phones.
+
+PC server setup (needed for images, or for PC chat mode):
 
 1. On the PC: `KIRA_TOKEN=yourpassword python kira_void.py web --lan` (on Windows: `set KIRA_TOKEN=yourpassword` first). It prints the address to use, e.g. `http://192.168.1.5:8080`.
 2. Build the APK: on https://codemagic.io/apps add this repository, pick the **Kira-Void Android** workflow from `codemagic.yaml`, start the build and download `app-release.apk` from the build artifacts.
-3. Install the APK on the phone (allow "install unknown apps"), open **Settings** in the app, enter the address and password, tap **Save and check**.
+3. Install the APK on the phone (allow "install unknown apps"). For PC features open **Settings**, enter the address and password, tap **Save and check**.
 
 Phone and PC must be on the same network. The APK is signed with a debug key, so it can be installed directly but not published to Google Play.
