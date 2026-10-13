@@ -3,7 +3,7 @@
 Hard limits kept on purpose: nothing involving minors, and no sexual edits of
 real people's photos without their consent (your responsibility, see README).
 """
-import io, os, re
+import io, os, re, time, uuid
 
 GEN_MODEL = os.environ.get("KIRA_IMAGE_MODEL", "stabilityai/stable-diffusion-xl-base-1.0")
 REFINER_MODEL = os.environ.get("KIRA_REFINER", "stabilityai/stable-diffusion-xl-refiner-1.0")  # "none" disables
@@ -17,6 +17,10 @@ _MINOR = re.compile(
     r"ребен\w*|детск\w*|дети|малолет\w*|несовершеннолет\w*|школьниц\w*|школьник\w*|подрост\w*|лоли)\b",
     re.I,
 )
+# Numeric ages: "12-year-old", "12 yo", "12 y/o", "aged 12", "age: 12", "12 лет", "12-летняя"
+_AGE = re.compile(
+    r"(?:\b(\d{1,2})\s*[- ]?\s*(?:years?[- ]?old|yrs?[- ]?old|y/?o\b|yo\b|лет|летн\w*|года\b|год\b)"
+    r"|\b(?:aged?|возраст\w*)\s*[:=]?\s*(\d{1,2})\b)", re.I)
 _pipes = {}
 
 QUALITY = ("masterpiece, best quality, ultra detailed, sharp focus, realistic skin texture, "
@@ -28,7 +32,8 @@ NEGATIVE = ("extra limbs, extra arms, extra legs, three arms, three legs, extra 
 
 
 def check(prompt):
-    if _MINOR.search(prompt):
+    ages = [int(n) for m in _AGE.finditer(prompt) for n in m.groups() if n]
+    if _MINOR.search(prompt) or any(a < 18 for a in ages):
         raise ValueError("Blocked: prompts involving minors are never allowed.")
 
 
@@ -79,7 +84,7 @@ def _setup(p, dev):
 
 def _png(img):
     os.makedirs(OUT, exist_ok=True)
-    path = os.path.join(OUT, f"{len(os.listdir(OUT)):05d}.png")
+    path = os.path.join(OUT, f"{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}.png")
     img.save(path)
     b = io.BytesIO(); img.save(b, "PNG")
     return b.getvalue()
