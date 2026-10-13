@@ -4,8 +4,10 @@
   python kira_void.py setup   # build the 'kira-void' model from ./Modelfile
   python kira_void.py         # terminal chat
   python kira_void.py web     # web UI on http://127.0.0.1:8080
+  python kira_void.py image "prompt"            # text -> image.png
+  python kira_void.py edit in.png "prompt"      # edit an image by instruction
 """
-import json, os, subprocess, sys, urllib.request
+import base64, json, os, subprocess, sys, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 OLLAMA = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
@@ -75,7 +77,10 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers(); self.wfile.write(body)
 
     def do_POST(self):
-        msgs = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        data = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        if self.path in ("/image", "/edit"):
+            return self.image(data)
+        msgs = data
         self.send_response(200); self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.end_headers()
         try:
@@ -85,10 +90,39 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(f"\n[error: {e}]".encode())
 
 
+    def image(self, d):
+        import images
+        try:
+            if self.path == "/image":
+                png = images.generate(d["prompt"], d.get("negative", ""))
+            else:
+                png = images.edit(base64.b64decode(d["image"]), d["prompt"])
+            code, ctype, body = 200, "image/png", png
+        except Exception as e:
+            code, ctype, body = 400, "text/plain; charset=utf-8", str(e).encode()
+        self.send_response(code); self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body))); self.end_headers()
+        self.wfile.write(body)
+
+
 def web():
     print("Kira-Void web UI: http://127.0.0.1:8080")
     ThreadingHTTPServer(("127.0.0.1", 8080), Handler).serve_forever()
 
 
+def cli_image(argv):
+    import images
+    if argv[0] == "image":
+        png = images.generate(argv[1])
+    else:
+        png = images.edit(open(argv[1], "rb").read(), argv[2])
+    open("image.png", "wb").write(png)
+    print("saved image.png")
+
+
 if __name__ == "__main__":
-    {"setup": setup, "web": web}.get(sys.argv[1] if len(sys.argv) > 1 else "", cli)()
+    a = sys.argv[1:]
+    if a[:1] in (["image"], ["edit"]):
+        cli_image(a)
+    else:
+        {"setup": setup, "web": web}.get(a[0] if a else "", cli)()
