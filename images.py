@@ -6,6 +6,8 @@ real people's photos without their consent (your responsibility, see README).
 import io, os, re
 
 GEN_MODEL = os.environ.get("KIRA_IMAGE_MODEL", "stabilityai/stable-diffusion-xl-base-1.0")
+REFINER_MODEL = os.environ.get("KIRA_REFINER", "stabilityai/stable-diffusion-xl-refiner-1.0")  # "none" disables
+LOWVRAM = os.environ.get("KIRA_LOWVRAM") == "1"
 EDIT_MODEL = os.environ.get("KIRA_EDIT_MODEL", "timbrooks/instruct-pix2pix")
 OUT = os.path.expanduser("~/.kira-void/images")
 
@@ -16,6 +18,13 @@ _MINOR = re.compile(
     re.I,
 )
 _pipes = {}
+
+QUALITY = ("masterpiece, best quality, ultra detailed, sharp focus, realistic skin texture, "
+           "natural lighting, professional photo, 8k, anatomically correct, perfect hands, five fingers")
+NEGATIVE = ("extra limbs, extra arms, extra legs, three arms, three legs, extra fingers, missing fingers, "
+            "fused fingers, mutated hands, malformed limbs, deformed, bad anatomy, bad proportions, "
+            "disfigured, long neck, cloned face, duplicate, asymmetrical eyes, blurry, lowres, jpeg artifacts, "
+            "watermark, text, signature, cropped, worst quality, low quality, cartoon, 3d render")
 
 
 def check(prompt):
@@ -35,13 +44,37 @@ def _pipe(kind):
     dev, dt = _device()
     if kind == "gen":
         p = AutoPipelineForText2Image.from_pretrained(GEN_MODEL, torch_dtype=dt)
+        _setup(p, dev)
+        _pipes[kind] = p
+        return p
+    elif kind == "refiner":
+        from diffusers import StableDiffusionXLImg2ImgPipeline
+        base = _pipe("gen")
+        p = StableDiffusionXLImg2ImgPipeline.from_pretrained(
+            REFINER_MODEL, text_encoder_2=base.text_encoder_2, vae=base.vae, torch_dtype=dt)
+        _setup(p, dev)
+        _pipes[kind] = p
+        return p
     else:
         p = StableDiffusionInstructPix2PixPipeline.from_pretrained(
             EDIT_MODEL, torch_dtype=dt, safety_checker=None)
-    if hasattr(p, "safety_checker"):
-        p.safety_checker = None
+    p.safety_checker = None
     _pipes[kind] = p.to(dev)
     return _pipes[kind]
+
+
+def _setup(p, dev):
+    from diffusers import DPMSolverMultistepScheduler
+    p.scheduler = DPMSolverMultistepScheduler.from_config(
+        p.scheduler.config, use_karras_sigmas=True, algorithm_type="sde-dpmsolver++")
+    if hasattr(p, "safety_checker"):
+        p.safety_checker = None
+    if dev == "cuda" and LOWVRAM:
+        p.enable_model_cpu_offload()
+    else:
+        p.to(dev)
+    if hasattr(p, "enable_vae_tiling"):
+        p.enable_vae_tiling()
 
 
 def _png(img):
@@ -52,12 +85,22 @@ def _png(img):
     return b.getvalue()
 
 
-def generate(prompt, negative="", steps=30, seed=None):
+def generate(prompt, negative="", steps=40, seed=None, width=1024, height=1024, guidance=6.5):
+    """Base SDXL does the first 80% of denoising, the refiner (2nd model) finishes the last 20%."""
     check(prompt)
     import torch
     g = torch.Generator().manual_seed(seed) if seed is not None else None
-    img = _pipe("gen")(prompt=prompt, negative_prompt=negative or None,
-                       num_inference_steps=steps, generator=g).images[0]
+    kw = dict(prompt=f"{prompt}, {QUALITY}", negative_prompt=f"{negative}, {NEGATIVE}".strip(", "),
+              num_inference_steps=steps, guidance_scale=guidance, generator=g)
+    kw.update(width=width, height=height)
+    use_ref = REFINER_MODEL.lower() != "none"
+    if use_ref:
+        latents = _pipe("gen")(**kw, denoising_end=0.8, output_type="latent").images
+        img = _pipe("refiner")(prompt=kw["prompt"], negative_prompt=kw["negative_prompt"],
+                               num_inference_steps=steps, guidance_scale=guidance, generator=g,
+                               denoising_start=0.8, image=latents).images[0]
+    else:
+        img = _pipe("gen")(**kw).images[0]
     return _png(img)
 
 
@@ -65,6 +108,7 @@ def edit(image_bytes, prompt, steps=30, image_guidance=1.5):
     check(prompt)
     from PIL import Image
     src = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    img = _pipe("edit")(prompt, image=src, num_inference_steps=steps,
-                        image_guidance_scale=image_guidance).images[0]
+    src.thumbnail((768, 768))
+    img = _pipe("edit")(prompt, image=src, negative_prompt=NEGATIVE, num_inference_steps=steps,
+                        image_guidance_scale=image_guidance, guidance_scale=7.5).images[0]
     return _png(img)

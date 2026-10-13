@@ -26,4 +26,7 @@ python kira_void.py edit photo.png "make it night, add rain"
 In the web UI type `/img your prompt`, or attach a picture and type the change you want.
 - Generation uses SDXL (`KIRA_IMAGE_MODEL`, e.g. set any NSFW-capable SDXL checkpoint from Hugging Face); editing uses InstructPix2Pix (`KIRA_EDIT_MODEL`). The NSFW safety checker is disabled; adult content is not filtered. A GPU is strongly recommended.
 - Kept deliberately: prompts mentioning minors are blocked. Do not use edit mode to make sexual images of real people without their consent.
+- Quality: 1024px SDXL, DPM++ SDE Karras, 40 steps, automatic quality prompt plus a strong negative prompt against extra limbs/fingers and bad anatomy. This reduces such errors a lot but cannot eliminate them; just regenerate or change the seed.
+- Second model: the SDXL **refiner** (`KIRA_REFINER`, `none` to disable) finishes the last 20% of denoising for sharper skin and detail. Needs ~16 GB VRAM; set `KIRA_LOWVRAM=1` to offload to CPU on smaller GPUs.
+- Best photo realism: point `KIRA_IMAGE_MODEL` at a photoreal SDXL checkpoint (e.g. RealVisXL, Juggernaut XL).
 - Everything is also saved to `~/.kira-void/images`.
