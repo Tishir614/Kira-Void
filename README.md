@@ -11,7 +11,7 @@ Local, free chat app on top of **Qwen** (via [Ollama](https://ollama.com)). Runs
 ## Run
 ```
 ollama pull qwen3:8b      # use qwen3:14b / 32b if you have the VRAM (edit Modelfile FROM)
-python kira_void.py setup # creates the 'kira-void' model
+python kira_void.py setup # creates the 'kira-void' model (see presets below)
 python kira_void.py       # terminal chat
 python kira_void.py web   # browser UI at http://127.0.0.1:8080
 ```
@@ -30,3 +30,15 @@ In the web UI type `/img your prompt`, or attach a picture and type the change y
 - Second model: the SDXL **refiner** (`KIRA_REFINER`, `none` to disable) finishes the last 20% of denoising for sharper skin and detail. Needs ~16 GB VRAM; set `KIRA_LOWVRAM=1` to offload to CPU on smaller GPUs.
 - Best photo realism: point `KIRA_IMAGE_MODEL` at a photoreal SDXL checkpoint (e.g. RealVisXL, Juggernaut XL).
 - Everything is also saved to `~/.kira-void/images`.
+
+## Model presets
+`python kira_void.py setup <preset>` (pulls the base on first use via `ollama pull <tag>` if missing):
+
+| preset | base | notes |
+|---|---|---|
+| default | qwen3:8b | |
+| smart / smarter | qwen3:14b / 32b | smarter, needs more VRAM |
+| uncensored | huihui_ai/qwen3-abliterated:8b | community Qwen3 with refusals removed |
+| uncensored-smart | huihui_ai/qwen3-abliterated:14b | |
+
+Any other Ollama tag also works. In the terminal chat, `/model <name>` switches the active model on the fly (a second chat model). The tags above are community models and may be renamed; check ollama.com if a pull fails.

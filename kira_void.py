@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Kira-Void: local Qwen assistant (Ollama). Stdlib only.
 
-  python kira_void.py setup   # build the 'kira-void' model from ./Modelfile
+  python kira_void.py setup [preset|ollama-tag]   # build 'kira-void' (presets: default, smart,
+                                                  # smarter, uncensored, uncensored-smart)
   python kira_void.py         # terminal chat
   python kira_void.py web     # web UI on http://127.0.0.1:8080
   python kira_void.py image "prompt"            # text -> image.png
@@ -41,13 +42,33 @@ def save(msgs):
     json.dump(msgs, open(STORE, "w"), ensure_ascii=False)
 
 
-def setup():
-    subprocess.check_call(["ollama", "create", MODEL, "-f", os.path.join(HERE, "Modelfile")])
+PRESETS = {
+    "default": "qwen3:8b",
+    "smart": "qwen3:14b",          # needs ~10 GB VRAM
+    "smarter": "qwen3:32b",        # needs ~20 GB VRAM
+    "uncensored": "huihui_ai/qwen3-abliterated:8b",   # Qwen3 with refusals removed
+    "uncensored-smart": "huihui_ai/qwen3-abliterated:14b",
+}
+
+
+def setup(preset=None):
+    """Build the 'kira-void' model; preset or any ollama tag replaces FROM in the Modelfile."""
+    base = PRESETS.get(preset, preset)
+    text = open(os.path.join(HERE, "Modelfile")).read()
+    if base:
+        text = "\n".join(f"FROM {base}" if l.startswith("FROM ") else l for l in text.split("\n"))
+    path = os.path.join(HERE, ".Modelfile.build")
+    open(path, "w").write(text)
+    try:
+        subprocess.check_call(["ollama", "create", MODEL, "-f", path])
+    finally:
+        os.remove(path)
 
 
 def cli():
+    global MODEL
     msgs = load()
-    print(f"Kira-Void ({MODEL}). /reset clears memory, /exit quits.")
+    print(f"Kira-Void ({MODEL}). /reset clears memory, /model <name> switches model, /exit quits.")
     while True:
         try:
             q = input("\n> ").strip()
@@ -55,6 +76,9 @@ def cli():
             break
         if q in ("/exit", "/quit"):
             break
+        if q.startswith("/model"):
+            MODEL = q.split(maxsplit=1)[1] if " " in q else MODEL
+            print(f"model: {MODEL}"); continue
         if q == "/reset":
             msgs = []; save(msgs); print("memory cleared"); continue
         if not q:
@@ -125,4 +149,7 @@ if __name__ == "__main__":
     if a[:1] in (["image"], ["edit"]):
         cli_image(a)
     else:
-        {"setup": setup, "web": web}.get(a[0] if a else "", cli)()
+        if a[:1] == ["setup"]:
+            setup(a[1] if len(a) > 1 else None)
+        else:
+            {"web": web}.get(a[0] if a else "", cli)()
