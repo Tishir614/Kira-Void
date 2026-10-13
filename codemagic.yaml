@@ -1,0 +1,114 @@
+workflows:
+  kira-void-linux:
+    name: Kira-Void Linux
+    max_build_duration: 60
+    instance_type: linux_x2
+    environment:
+      flutter: stable
+    scripts:
+      - name: Linux build tools
+        script: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev
+      - name: Prepare Linux project
+        script: bash tools/prepare_linux.sh
+      - name: Build
+        script: cd android_app && flutter pub get && flutter build linux --release
+      - name: Package with installer
+        script: bash tools/package_linux.sh
+    artifacts:
+      - kira-void-linux.tar.gz
+
+  kira-void-android:
+    name: Kira-Void Android
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      flutter: stable
+      java: 17
+    working_directory: android_app
+    scripts:
+      - name: Generate Android project (keeps our files)
+        script: flutter create --org com.kiravoid --project-name kira_void --platforms android .
+      - name: On-phone image generation (MediaPipe)
+        script: |
+          mkdir -p android/app/src/main/assets
+          curl -fL -o android/app/src/main/assets/canny_edge_plugin.tflite \
+            https://storage.googleapis.com/mediapipe-models/image_generator/plugin_models/float32/latest/canny_edge_plugin.tflite
+          printf '\ndependencies {\n    implementation("com.google.mediapipe:tasks-vision-image-generator:0.10.26.1")\n}\n' >> android/app/build.gradle.kts
+      - name: Get packages
+        script: flutter pub get
+      - name: App icon
+        script: dart run flutter_launcher_icons
+      - name: Build APK
+        script: flutter build apk --release
+    artifacts:
+      - build/app/outputs/flutter-apk/*.apk
+      - android_app/build/app/outputs/flutter-apk/*.apk
+
+  # Run once: converts a Stable Diffusion 1.5 model for the phone and gives you a zip
+  # to download and import in the app (Images tab). Change SD15_MODEL_URL to use another
+  # SD 1.5-based model (direct link to a .safetensors file).
+  kira-void-phone-image-model:
+    name: Kira-Void phone image model
+    max_build_duration: 60
+    instance_type: linux_x2
+    environment:
+      vars:
+        SD15_MODEL_URL: https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/resolve/main/v1-5-pruned-emaonly-fp16.safetensors
+    scripts:
+      - name: Install converter dependencies
+        script: pip3 install --index-url https://download.pytorch.org/whl/cpu torch && pip3 install safetensors numpy requests
+      - name: Download model
+        script: &download |
+          AUTH=()
+          if [ -n "$CIVITAI_TOKEN" ]; then AUTH=(-H "Authorization: Bearer $CIVITAI_TOKEN"); fi
+          curl -fL --retry 5 "${AUTH[@]}" -o model.safetensors "$SD15_MODEL_URL"
+      - name: Convert for phone
+        script: &convert python3 tools/convert_sd_for_phone.py model.safetensors kira-void-image-model.zip && rm model.safetensors
+    artifacts:
+      - kira-void-image-model.zip
+
+  # Same, for any SD 1.5 checkpoint you choose (furry, anime, photoreal, NSFW...).
+  # In Codemagic: App settings > Environment variables, group "kira_model", add
+  #   SD15_MODEL_URL  = direct download link of an SD 1.5 .safetensors
+  #                     (Civitai: https://civitai.com/api/download/models/<version id>)
+  #   CIVITAI_TOKEN   = your Civitai API key (needed for NSFW models on Civitai)
+  kira-void-phone-image-model-custom:
+    name: Kira-Void phone image model (custom / furry)
+    max_build_duration: 60
+    instance_type: linux_x2
+    environment:
+      groups:
+        - kira_model
+    scripts:
+      - name: Install converter dependencies
+        script: pip3 install --index-url https://download.pytorch.org/whl/cpu torch && pip3 install safetensors numpy requests
+      - name: Check settings
+        script: '[ -n "$SD15_MODEL_URL" ] || { echo "Set SD15_MODEL_URL in the kira_model environment group"; exit 1; }'
+      - name: Download model
+        script: *download
+      - name: Convert for phone
+        script: *convert
+    artifacts:
+      - kira-void-image-model.zip
+
+  # OrbitMix v2.1 (furry, SD 1.5, civitai.com/models/172268) converted for the phone.
+  # Civitai needs your API key for this model: add CIVITAI_TOKEN to the "kira_model"
+  # environment group (App settings > Environment variables).
+  kira-void-phone-orbitmix:
+    name: Kira-Void phone image model (OrbitMix v2.1)
+    max_build_duration: 60
+    instance_type: linux_x2
+    environment:
+      groups:
+        - kira_model
+    scripts:
+      - name: Install converter dependencies
+        script: pip3 install --index-url https://download.pytorch.org/whl/cpu torch && pip3 install safetensors numpy requests
+      - name: Find OrbitMix v2.1
+        script: echo "SD15_MODEL_URL=$(python3 tools/civitai_url.py 172268 v2.1)" >> $CM_ENV
+      - name: Download model
+        script: *download
+      - name: Convert for phone
+        script: *convert
+    artifacts:
+      - kira-void-image-model.zip

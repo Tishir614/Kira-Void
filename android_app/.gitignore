@@ -1,0 +1,14 @@
+build/
+.dart_tool/
+.flutter-plugins*
+.packages
+pubspec.lock
+android/*
+!android/app/
+android/app/*
+!android/app/src/
+android/app/src/*
+!android/app/src/main/
+android/app/src/main/*
+!android/app/src/main/AndroidManifest.xml
+!android/app/src/main/kotlin/
