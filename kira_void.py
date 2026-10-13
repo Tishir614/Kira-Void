@@ -135,13 +135,27 @@ def web():
 
 
 def cli_image(argv):
-    import images
-    if argv[0] == "image":
-        png = images.generate(argv[1])
-    else:
-        png = images.edit(open(argv[1], "rb").read(), argv[2])
-    open("image.png", "wb").write(png)
-    print("saved image.png")
+    import argparse, images
+    ap = argparse.ArgumentParser(prog="kira_void.py " + argv[0])
+    if argv[0] == "edit":
+        ap.add_argument("src")
+    ap.add_argument("prompt")
+    ap.add_argument("--neg", default="", help="extra negative prompt")
+    ap.add_argument("--seed", type=int, help="fixed seed to reproduce a result")
+    ap.add_argument("--steps", type=int, default=40)
+    ap.add_argument("--size", default="1024x1024", help="WxH, e.g. 832x1216 for portrait")
+    ap.add_argument("-n", type=int, default=1, help="number of variations")
+    a = ap.parse_args(argv[1:])
+    w, h = map(int, a.size.lower().split("x"))
+    for i in range(a.n):
+        seed = None if a.seed is None else a.seed + i
+        if argv[0] == "image":
+            png = images.generate(a.prompt, a.neg, a.steps, seed, w, h)
+        else:
+            png = images.edit(open(a.src, "rb").read(), a.prompt, a.steps)
+        name = "image.png" if a.n == 1 else f"image-{i + 1}.png"
+        open(name, "wb").write(png)
+        print("saved", name)
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ import io, os, re, time, uuid
 
 GEN_MODEL = os.environ.get("KIRA_IMAGE_MODEL", "stabilityai/stable-diffusion-xl-base-1.0")
 REFINER_MODEL = os.environ.get("KIRA_REFINER", "stabilityai/stable-diffusion-xl-refiner-1.0")  # "none" disables
+LORAS = [x for x in os.environ.get("KIRA_LORA", "").split(",") if x]  # LoRA files / HF repos for style & realism
 LOWVRAM = os.environ.get("KIRA_LOWVRAM") == "1"
 EDIT_MODEL = os.environ.get("KIRA_EDIT_MODEL", "timbrooks/instruct-pix2pix")
 OUT = os.path.expanduser("~/.kira-void/images")
@@ -49,6 +50,10 @@ def _pipe(kind):
     dev, dt = _device()
     if kind == "gen":
         p = AutoPipelineForText2Image.from_pretrained(GEN_MODEL, torch_dtype=dt)
+        for i, lora in enumerate(LORAS):
+            p.load_lora_weights(lora, adapter_name=f"lora{i}")
+        if LORAS:
+            p.set_adapters([f"lora{i}" for i in range(len(LORAS))])
         _setup(p, dev)
         _pipes[kind] = p
         return p

@@ -29,6 +29,7 @@ In the web UI type `/img your prompt`, or attach a picture and type the change y
 - Quality: 1024px SDXL, DPM++ SDE Karras, 40 steps, automatic quality prompt plus a strong negative prompt against extra limbs/fingers and bad anatomy. This reduces such errors a lot but cannot eliminate them; just regenerate or change the seed.
 - Second model: the SDXL **refiner** (`KIRA_REFINER`, `none` to disable) finishes the last 20% of denoising for sharper skin and detail. Needs ~16 GB VRAM; set `KIRA_LOWVRAM=1` to offload to CPU on smaller GPUs.
 - Best photo realism: point `KIRA_IMAGE_MODEL` at a photoreal SDXL checkpoint (e.g. RealVisXL, Juggernaut XL).
+- Extras: `--seed N` (reproduce a result), `--steps`, `--size 832x1216` (portrait), `--neg "..."`, `-n 4` (make 4 variations). `KIRA_LORA=path_or_repo,...` loads LoRA files for a specific style or more realism.
 - Everything is also saved to `~/.kira-void/images`.
 
 ## Model presets
