@@ -10,6 +10,12 @@ workflows:
     scripts:
       - name: Generate Android project (keeps our files)
         script: flutter create --org com.kiravoid --project-name kira_void --platforms android .
+      - name: On-phone image generation (MediaPipe)
+        script: |
+          mkdir -p android/app/src/main/assets
+          curl -fL -o android/app/src/main/assets/canny_edge_plugin.tflite \
+            https://storage.googleapis.com/mediapipe-models/image_generator/plugin_models/float32/latest/canny_edge_plugin.tflite
+          printf '\ndependencies {\n    implementation("com.google.mediapipe:tasks-vision-image-generator:0.10.26.1")\n}\n' >> android/app/build.gradle.kts
       - name: Get packages
         script: flutter pub get
       - name: App icon
@@ -19,3 +25,23 @@ workflows:
     artifacts:
       - build/app/outputs/flutter-apk/*.apk
       - android_app/build/app/outputs/flutter-apk/*.apk
+
+  # Run once: converts a Stable Diffusion 1.5 model for the phone and gives you a zip
+  # to download and import in the app (Images tab). Change SD15_MODEL_URL to use another
+  # SD 1.5-based model (direct link to a .safetensors file).
+  kira-void-phone-image-model:
+    name: Kira-Void phone image model
+    max_build_duration: 60
+    instance_type: linux_x2
+    environment:
+      vars:
+        SD15_MODEL_URL: https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/resolve/main/v1-5-pruned-emaonly-fp16.safetensors
+    scripts:
+      - name: Install converter dependencies
+        script: pip3 install --index-url https://download.pytorch.org/whl/cpu torch && pip3 install safetensors numpy requests
+      - name: Download model
+        script: curl -fL --retry 5 -o model.safetensors "$SD15_MODEL_URL"
+      - name: Convert for phone
+        script: python3 tools/convert_sd_for_phone.py model.safetensors kira-void-image-model.zip && rm model.safetensors
+    artifacts:
+      - kira-void-image-model.zip

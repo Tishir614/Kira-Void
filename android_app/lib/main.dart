@@ -4,12 +4,14 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'local_ai.dart';
+import 'phone_images.dart';
 
 const violet = Color(0xFF9D6BFF);
 const violetDeep = Color(0xFF5B2EDB);
@@ -20,6 +22,7 @@ const surface = Color(0xFF17122A);
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await LocalAI.init();
+  await PhoneImages.load();
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     systemNavigationBarColor: bgTop,
@@ -426,6 +429,7 @@ class _ImagePageState extends State<ImagePage> {
   Uint8List? result;
   bool busy = false;
   String? error;
+  double steps = 20;
 
   Future<void> pick() async {
     final f = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 1536);
@@ -443,8 +447,13 @@ class _ImagePageState extends State<ImagePage> {
       error = null;
     });
     try {
-      if (Api.server.isEmpty) throw 'Укажи адрес компьютера в настройках';
-      final png = await Api.image(prompt.text.trim(), source: source);
+      final Uint8List png;
+      if (Api.onPhone) {
+        png = await PhoneImages.generate(prompt.text.trim(), photo: source, steps: steps.round());
+      } else {
+        if (Api.server.isEmpty) throw 'Укажи адрес компьютера в настройках';
+        png = await Api.image(prompt.text.trim(), source: source);
+      }
       setState(() => result = png);
     } catch (e) {
       setState(() => error = e.toString());
@@ -463,11 +472,9 @@ class _ImagePageState extends State<ImagePage> {
   Widget build(BuildContext context) {
     return ListView(padding: const EdgeInsets.only(bottom: 24), children: [
       const Header('Создать'),
-      if (Api.onPhone)
-        const InfoCard(
-            'Картинки рисует компьютер: SDXL слишком тяжёлая для телефона. '
-            'Чат работает офлайн на телефоне, а для изображений запусти на ПК '
-            '«python kira_void.py web --lan» и укажи его адрес в настройках.'),
+      if (Api.onPhone && !PhoneImages.ready)
+        ImageModelSetup(onReady: () => setState(() {}))
+      else
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -485,7 +492,8 @@ class _ImagePageState extends State<ImagePage> {
                       child: Column(mainAxisSize: MainAxisSize.min, children: [
                       CircularProgressIndicator(color: violet),
                       SizedBox(height: 14),
-                      Text('Рисую…', style: TextStyle(color: Colors.white70)),
+                      Text('Рисую… на телефоне это 20–90 секунд',
+                          style: TextStyle(color: Colors.white70)),
                     ]))
                   : result != null
                       ? InteractiveViewer(child: Image.memory(result!, fit: BoxFit.contain))
@@ -533,7 +541,9 @@ class _ImagePageState extends State<ImagePage> {
               child: Text(
                 source == null
                     ? 'Новое изображение по описанию.\nНажми слева, чтобы изменить своё фото.'
-                    : 'Режим правки: опиши, что изменить.',
+                    : Api.onPhone
+                        ? 'Режим фото: контуры сохранятся, остальное перерисуется по описанию.'
+                        : 'Режим правки: опиши, что изменить.',
                 style: const TextStyle(color: Colors.white60, height: 1.35),
               ),
             ),
@@ -549,6 +559,24 @@ class _ImagePageState extends State<ImagePage> {
             decoration: InputDecoration(
                 hintText: source == null ? 'Опиши изображение…' : 'Что изменить…'),
           ),
+          if (Api.onPhone) ...[
+            const SizedBox(height: 8),
+            Row(children: [
+              const Text('Качество', style: TextStyle(color: Colors.white60)),
+              Expanded(
+                child: Slider(
+                  value: steps,
+                  min: 10,
+                  max: 40,
+                  divisions: 6,
+                  label: '${steps.round()} шагов',
+                  activeColor: violet,
+                  onChanged: (v) => setState(() => steps = v),
+                ),
+              ),
+              Text('${steps.round()}', style: const TextStyle(color: Colors.white60)),
+            ]),
+          ],
           const SizedBox(height: 14),
           GradientButton(
               icon: Icons.auto_awesome,
@@ -625,8 +653,20 @@ class _SettingsPageState extends State<SettingsPage> {
                   labelText: 'HuggingFace токен (если загрузка просит)',
                   prefixIcon: Icon(Icons.key_outlined)),
             ),
+            if (PhoneImages.ready) ...[
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  await PhoneImages.delete();
+                  setState(() {});
+                },
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('Удалить модель картинок с телефона'),
+              ),
+            ],
             const SizedBox(height: 28),
-            const Text('Компьютер (для картинок)', style: TextStyle(color: Colors.white70)),
+            const Text('Компьютер (необязательно, для больших моделей)',
+                style: TextStyle(color: Colors.white70)),
             const SizedBox(height: 8),
           ],
           Container(
@@ -863,6 +903,101 @@ class _PhoneModelsCardState extends State<PhoneModelsCard> {
         if (!downloaded.containsValue(true))
           const Text('Скачанных моделей нет. Открой вкладку «Чат», чтобы скачать.',
               style: TextStyle(color: Colors.white60)),
+      ]),
+    );
+  }
+}
+
+/// First-run card for on-phone images: import the converted SD 1.5 zip (from Codemagic) or download it by link.
+class ImageModelSetup extends StatefulWidget {
+  const ImageModelSetup({super.key, required this.onReady});
+  final VoidCallback onReady;
+  @override
+  State<ImageModelSetup> createState() => _ImageModelSetupState();
+}
+
+class _ImageModelSetupState extends State<ImageModelSetup> {
+  final url = TextEditingController();
+  String? status;
+  String? error;
+  bool busy = false;
+
+  Future<void> _run(Future<void> Function() job) async {
+    if (busy) return;
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      await job();
+      widget.onReady();
+    } catch (e) {
+      if (mounted) setState(() => error = '$e');
+    }
+    if (mounted) setState(() => busy = false);
+  }
+
+  Future<void> fromFile() => _run(() async {
+        final r = await FilePicker.platform.pickFiles(type: FileType.any);
+        final path = r?.files.single.path;
+        if (path == null) return;
+        if (!path.toLowerCase().endsWith('.zip')) throw 'Нужен .zip файл модели';
+        setState(() => status = 'Распаковываю модель… (1–3 минуты)');
+        await PhoneImages.installZip(path);
+        File(path).delete().ignore();
+      });
+
+  Future<void> fromUrl() => _run(() async {
+        if (url.text.trim().isEmpty) throw 'Вставь ссылку на .zip';
+        setState(() => status = 'Скачиваю…');
+        await PhoneImages.installFromUrl(url.text, (p) {
+          if (mounted) setState(() => status = p >= 100 ? 'Распаковываю…' : 'Скачивание: $p%');
+        });
+      });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const Text('Рисование прямо на телефоне',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 8),
+        const Text(
+          'Нужна модель Stable Diffusion 1.5 (~2 ГБ), подготовленная для телефона. Один раз:\n\n'
+          '1. На Codemagic запусти сборку «Kira-Void phone image model».\n'
+          '2. Скачай из неё kira-void-image-model.zip на телефон.\n'
+          '3. Нажми «Выбрать файл» ниже.\n\n'
+          'Дальше картинки создаются без интернета. Нужен телефон с 6+ ГБ ОЗУ.',
+          style: TextStyle(color: Colors.white70, height: 1.45),
+        ),
+        const SizedBox(height: 16),
+        if (busy) ...[
+          const LinearProgressIndicator(color: violet, backgroundColor: Colors.white10),
+          const SizedBox(height: 10),
+          Text(status ?? '', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70)),
+        ] else ...[
+          GradientButton(icon: Icons.folder_zip_outlined, label: 'Выбрать файл', onTap: fromFile),
+          const SizedBox(height: 18),
+          const Text('или по прямой ссылке на .zip:', style: TextStyle(color: Colors.white60)),
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(
+              child: TextField(
+                controller: url,
+                keyboardType: TextInputType.url,
+                decoration: const InputDecoration(hintText: 'https://…/kira-void-image-model.zip'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            GradientButton(icon: Icons.download_rounded, onTap: fromUrl),
+          ]),
+        ],
+        if (error != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Text('Ошибка: $error', style: const TextStyle(color: Colors.redAccent)),
+          ),
       ]),
     );
   }

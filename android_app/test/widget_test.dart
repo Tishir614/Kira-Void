@@ -9,6 +9,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Нейросеть прямо на телефоне'), findsOneWidget);
     expect(find.text('Qwen 2.5 · 1.5B'), findsOneWidget);
+    expect(find.text('Рисование прямо на телефоне', skipOffstage: false), findsOneWidget);
   });
 
   testWidgets('pc mode without server opens settings', (tester) async {

@@ -53,9 +53,16 @@ The phone app (`android_app/`, Flutter) has two modes, switched in **Settings**:
 - **On the phone (default):** Qwen runs fully offline on the phone (MediaPipe/LiteRT via `flutter_gemma`). On first launch pick a model and it downloads once from HuggingFace: Qwen 2.5 1.5B (1.6 GB, 6+ GB RAM), Qwen 3 0.6B (0.6 GB) or Qwen 2.5 0.5B (0.5 GB, weak phones). GPU is used when available, CPU otherwise. Downloaded models can be deleted in Settings.
 - **On the PC:** chat goes to your PC's Kira-Void server (bigger models, better answers).
 
-Image creation/editing always runs on the PC: SDXL is too heavy for phones.
+**Images on the phone** use Stable Diffusion 1.5 through Google's MediaPipe Image Generator (512×512, 20–90 s per picture, 6+ GB RAM). The model must be converted once:
 
-PC server setup (needed for images, or for PC chat mode):
+1. On Codemagic run the **Kira-Void phone image model** workflow. It downloads SD 1.5 and produces `kira-void-image-model.zip` (~2 GB) as an artifact. To use a different SD 1.5-based model, change `SD15_MODEL_URL` (direct link to a `.safetensors`). SDXL/SD2/Flux models do not work on the phone.
+2. Download the zip on the phone and in the app's **Images** tab tap **Choose file** (or paste a direct link to the zip).
+
+Alternatively convert on a PC: `pip install torch safetensors numpy requests` then `python tools/convert_sd_for_phone.py model.safetensors kira-void-image-model.zip`.
+
+With a photo selected, phone mode keeps the photo's outlines (edge plugin) and repaints it by the prompt; true prompt-based editing (InstructPix2Pix) and SDXL quality are PC-only.
+
+PC server setup (optional: bigger chat models, SDXL images, real photo editing):
 
 1. On the PC: `KIRA_TOKEN=yourpassword python kira_void.py web --lan` (on Windows: `set KIRA_TOKEN=yourpassword` first). It prints the address to use, e.g. `http://192.168.1.5:8080`.
 2. Build the APK: on https://codemagic.io/apps add this repository, pick the **Kira-Void Android** workflow from `codemagic.yaml`, start the build and download `app-release.apk` from the build artifacts.
