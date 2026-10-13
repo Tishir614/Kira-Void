@@ -47,6 +47,19 @@ Any other Ollama tag also works. In the terminal chat, `/model <name>` switches 
 ## Terminal chat commands
 `/system <prompt>` set your own persona/system prompt, `/web <url>` read a web page into context, `/file <path>` read a local text file, `/img <prompt>` generate an image, `/model <name>` switch model, `/reset` clear memory.
 
+## Linux app
+A desktop app (same design as the phone app) plus an installer that sets everything up.
+
+1. On https://codemagic.io/apps run the **Kira-Void Linux** workflow and download `kira-void-linux.tar.gz` from the artifacts.
+2. Install:
+   ```
+   tar xzf kira-void-linux.tar.gz && cd kira-void && ./install.sh
+   ```
+   The installer installs Ollama if missing, asks which Qwen to use (default / smart / uncensored) and whether to add SDXL image generation (NVIDIA GPU), downloads the model, and adds **Kira-Void** to the applications menu and a `kira-void` command.
+3. Open Kira-Void from the menu: the launcher starts Ollama and the local server and opens the app. Saved images go to `~/Pictures/Kira-Void`.
+
+Settings such as `KIRA_IMAGE_MODEL=/path/OrbitMixV2.1.safetensors` go into `~/.config/kira-void/env`. Remove with `~/.local/share/kira-void/uninstall.sh`.
+
 ## Android app (built on Codemagic)
 The phone app (`android_app/`, Flutter) has two modes, switched in **Settings**:
 

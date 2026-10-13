@@ -1,4 +1,22 @@
 workflows:
+  kira-void-linux:
+    name: Kira-Void Linux
+    max_build_duration: 60
+    instance_type: linux_x2
+    environment:
+      flutter: stable
+    scripts:
+      - name: Linux build tools
+        script: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev
+      - name: Prepare Linux project
+        script: bash tools/prepare_linux.sh
+      - name: Build
+        script: cd android_app && flutter pub get && flutter build linux --release
+      - name: Package with installer
+        script: bash tools/package_linux.sh
+    artifacts:
+      - kira-void-linux.tar.gz
+
   kira-void-android:
     name: Kira-Void Android
     max_build_duration: 60

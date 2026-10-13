@@ -19,10 +19,15 @@ const bgTop = Color(0xFF0B0816);
 const bgBottom = Color(0xFF1C0F3A);
 const surface = Color(0xFF17122A);
 
+/// Linux desktop build: chat and images go to the local Kira-Void server started by the launcher.
+bool isDesktop = Platform.isLinux;
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await LocalAI.init();
-  await PhoneImages.load();
+  if (!isDesktop) {
+    await LocalAI.init();
+    await PhoneImages.load();
+  }
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     systemNavigationBarColor: bgTop,
@@ -39,10 +44,10 @@ class Api {
 
   static Future<void> load() async {
     final p = await SharedPreferences.getInstance();
-    server = p.getString('server') ?? '';
+    server = p.getString('server') ?? (isDesktop ? 'http://127.0.0.1:8080' : '');
     token = p.getString('token') ?? '';
     hfToken = p.getString('hfToken') ?? '';
-    onPhone = p.getBool('onPhone') ?? true;
+    onPhone = !isDesktop && (p.getBool('onPhone') ?? true);
   }
 
   static Future<void> setMode(bool phone) async {
@@ -473,6 +478,16 @@ class _ImagePageState extends State<ImagePage> {
   }
 
   Future<void> share() async {
+    if (isDesktop) {
+      final dir = Directory('${Platform.environment['HOME']}/Pictures/Kira-Void');
+      await dir.create(recursive: true);
+      final f = File('${dir.path}/kira-void-${DateTime.now().millisecondsSinceEpoch}.png');
+      await f.writeAsBytes(result!);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Сохранено: ${f.path}')));
+      }
+      return;
+    }
     final dir = await getTemporaryDirectory();
     final f = File('${dir.path}/kira-void-${DateTime.now().millisecondsSinceEpoch}.png');
     await f.writeAsBytes(result!);
@@ -522,7 +537,9 @@ class _ImagePageState extends State<ImagePage> {
                   icon: const Icon(Icons.edit_outlined),
                   label: const Text('Изменить это')),
               TextButton.icon(
-                  onPressed: share, icon: const Icon(Icons.ios_share), label: const Text('Сохранить')),
+                  onPressed: share,
+                  icon: Icon(isDesktop ? Icons.download : Icons.ios_share),
+                  label: const Text('Сохранить')),
             ]),
           if (error != null)
             Padding(
@@ -649,6 +666,7 @@ class _SettingsPageState extends State<SettingsPage> {
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          if (!isDesktop) ...[
           const Text('Где работает чат', style: TextStyle(color: Colors.white70)),
           const SizedBox(height: 8),
           SegmentedButton<bool>(
@@ -663,6 +681,7 @@ class _SettingsPageState extends State<SettingsPage> {
             },
           ),
           const SizedBox(height: 18),
+          ],
           if (Api.onPhone) ...[
             const PhoneModelsCard(),
             const SizedBox(height: 12),
@@ -697,12 +716,16 @@ class _SettingsPageState extends State<SettingsPage> {
               color: violet.withValues(alpha: 0.10),
               border: Border.all(color: violet.withValues(alpha: 0.3)),
             ),
-            child: const Text(
-              'Kira-Void работает на твоём компьютере, телефон подключается к нему по Wi-Fi.\n\n'
-              '1. На ПК: python kira_void.py web --lan\n'
-              '2. Впиши сюда адрес, который он покажет (например http://192.168.1.5:8080)\n'
-              '3. Телефон и ПК должны быть в одной сети',
-              style: TextStyle(height: 1.45, color: Colors.white70),
+            child: Text(
+              isDesktop
+                  ? 'Kira-Void работает на этом компьютере: ярлык запускает локальный сервер '
+                      '(Qwen через Ollama и SDXL для картинок) вместе с приложением.\n\n'
+                      'Адрес по умолчанию: http://127.0.0.1:8080. Можно указать и другой ПК в сети.'
+                  : 'Kira-Void работает на твоём компьютере, телефон подключается к нему по Wi-Fi.\n\n'
+                      '1. На ПК: python kira_void.py web --lan\n'
+                      '2. Впиши сюда адрес, который он покажет (например http://192.168.1.5:8080)\n'
+                      '3. Телефон и ПК должны быть в одной сети',
+              style: const TextStyle(height: 1.45, color: Colors.white70),
             ),
           ),
           const SizedBox(height: 18),
