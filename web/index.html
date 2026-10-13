@@ -1,0 +1,23 @@
+<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
+<title>Kira-Void</title>
+<style>
+:root{color-scheme:dark light}body{margin:0;font:16px system-ui;background:#0d0d12;color:#e8e8f0;display:flex;flex-direction:column;height:100vh}
+h1{margin:0;padding:12px 16px;font-size:18px;border-bottom:1px solid #2a2a38}
+#log{flex:1;overflow:auto;padding:16px}.m{white-space:pre-wrap;margin:0 0 14px;padding:10px 14px;border-radius:10px;max-width:800px}
+.user{background:#23233a;margin-left:auto}.assistant{background:#171722}
+form{display:flex;gap:8px;padding:12px 16px;border-top:1px solid #2a2a38}
+textarea{flex:1;font:inherit;background:#171722;color:inherit;border:1px solid #2a2a38;border-radius:8px;padding:8px;resize:none}
+button{font:inherit;padding:0 18px;border:0;border-radius:8px;background:#6c5ce7;color:#fff}
+</style>
+<h1>Kira-Void</h1><div id=log></div>
+<form id=f><textarea id=q rows=2 placeholder="Message… (Enter to send)"></textarea><button>Send</button></form>
+<script>
+const log=document.getElementById('log'),q=document.getElementById('q');let msgs=[];
+function add(r,t){const d=document.createElement('div');d.className='m '+r;d.textContent=t;log.append(d);log.scrollTop=1e9;return d}
+q.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();f.requestSubmit()}};
+f.onsubmit=async e=>{e.preventDefault();const t=q.value.trim();if(!t)return;q.value='';
+msgs.push({role:'user',content:t});add('user',t);const d=add('assistant','…');let out='';
+const r=await fetch('/',{method:'POST',body:JSON.stringify(msgs)});const rd=r.body.getReader(),dec=new TextDecoder();
+for(;;){const{done,value}=await rd.read();if(done)break;out+=dec.decode(value,{stream:true});d.textContent=out;log.scrollTop=1e9}
+msgs.push({role:'assistant',content:out})};
+</script>
